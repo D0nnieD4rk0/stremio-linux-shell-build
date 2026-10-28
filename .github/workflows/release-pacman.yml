@@ -3,6 +3,7 @@ name: Release pacman package
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -38,6 +39,7 @@ jobs:
             cd "$GITHUB_WORKSPACE"
             install -Dm755 target/release/stremio-linux-shell "\$pkgdir/usr/lib/stremio/stremio"
             install -Dm644 data/server.js "\$pkgdir/usr/lib/stremio/server.js"
+            install -Dm644 /dev/null "\$pkgdir/usr/bin/stremio"
             printf '#!/bin/sh\nexport LC_NUMERIC=C\nexport SERVER_PATH=/usr/lib/stremio/server.js\nexec /usr/lib/stremio/stremio "\$@"\n' > "\$pkgdir/usr/bin/stremio"
             chmod 755 "\$pkgdir/usr/bin/stremio"
             install -Dm644 data/com.stremio.Stremio.desktop "\$pkgdir/usr/share/applications/com.stremio.Stremio.desktop"
@@ -48,8 +50,8 @@ jobs:
           # makepkg refuses to run as root, so use a builder user
           useradd -m builder
           chown -R builder:builder .
-          su builder -c "cargo build --release"
-          su builder -c "makepkg -f"
+          su builder -c "cd $GITHUB_WORKSPACE && cargo build --release"
+          su builder -c "cd $GITHUB_WORKSPACE && makepkg -f"
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
