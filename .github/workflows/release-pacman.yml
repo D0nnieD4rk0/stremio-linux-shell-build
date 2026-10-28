@@ -1,0 +1,57 @@
+name: Release pacman package
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  arch-pkg:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:base-devel
+    steps:
+      - name: Install build deps
+        run: |
+          pacman -Syu --noconfirm git rust gtk4 libadwaita webkitgtk-6.0 mpv nodejs libepoxy
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Build and package
+        run: |
+          VER=${GITHUB_REF_NAME#v}
+          cat > PKGBUILD <<EOF
+          pkgname=stremio-linux-shell
+          pkgver=$VER
+          pkgrel=1
+          pkgdesc='Native GTK4 client for Stremio on Linux'
+          arch=('x86_64')
+          url='https://github.com/Stremio/stremio-linux-shell'
+          license=('GPL3')
+          depends=('gtk4' 'libadwaita' 'webkitgtk-6.0' 'mpv' 'nodejs' 'libepoxy')
+          package() {
+            cd "$GITHUB_WORKSPACE"
+            install -Dm755 target/release/stremio-linux-shell "\$pkgdir/usr/lib/stremio/stremio"
+            install -Dm644 data/server.js "\$pkgdir/usr/lib/stremio/server.js"
+            printf '#!/bin/sh\nexport LC_NUMERIC=C\nexport SERVER_PATH=/usr/lib/stremio/server.js\nexec /usr/lib/stremio/stremio "\$@"\n' > "\$pkgdir/usr/bin/stremio"
+            chmod 755 "\$pkgdir/usr/bin/stremio"
+            install -Dm644 data/com.stremio.Stremio.desktop "\$pkgdir/usr/share/applications/com.stremio.Stremio.desktop"
+            install -Dm644 data/icons/com.stremio.Stremio.svg "\$pkgdir/usr/share/icons/hicolor/scalable/apps/com.stremio.Stremio.svg"
+            install -Dm644 data/com.stremio.Stremio.gschema.xml "\$pkgdir/usr/share/glib-2.0/schemas/com.stremio.Stremio.gschema.xml"
+          }
+          EOF
+          # makepkg refuses to run as root, so use a builder user
+          useradd -m builder
+          chown -R builder:builder .
+          su builder -c "cargo build --release"
+          su builder -c "makepkg -f"
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "*.pkg.tar.zst"
